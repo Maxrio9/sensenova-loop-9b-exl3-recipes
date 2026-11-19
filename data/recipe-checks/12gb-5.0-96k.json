@@ -1,0 +1,42 @@
+{
+ "model": "exl3-5.0bpw",
+ "card_gib": 12.0,
+ "context": 98304,
+ "kv": "Q8",
+ "headroom_gib": 1.0,
+ "torch_budget_gib": 10.54,
+ "status": "ok",
+ "seconds": 104.3,
+ "usage": {
+  "prompt_tokens": 95431,
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  },
+  "prompt_time": 99.02,
+  "prompt_tokens_per_sec": 963.75,
+  "completion_tokens": 35,
+  "completion_tokens_details": {
+   "accepted_prediction_tokens": 0,
+   "rejected_prediction_tokens": 0
+  },
+  "completion_time": 4.57,
+  "completion_tokens_per_sec": 7.67,
+  "total_tokens": 95466,
+  "total_time": 103.62
+ },
+ "answer": "1. 6:45\n2. Kaldor quarry\n3. Caro-Kann Defence\n4. 23\n5. 340",
+ "correct": 5,
+ "per_fact": [
+  true,
+  true,
+  true,
+  true,
+  true
+ ],
+ "refusal": false,
+ "doc_tokens": 94580,
+ "torch_peak_gib": 9.61,
+ "card_estimate_gib": 10.07,
+ "tabby_log_tail": " is in use.\n15:11:37.330 INFO:     Context: max_seq_len 98,304 tokens (configured),\n                       cache_size 98,304 tokens\n15:11:37.331 INFO:     Recurrent state storage: fp32\n15:11:37.359 INFO:     Using template \"chat_template\" for chat completions.\n15:11:37.359 INFO:     Response parsing: tool format qwen3_coder (config),\n                       reasoning tags <think> </think> (template)\n15:11:41.329 INFO:     Loading model /sc/exl3-5.0bpw (single GPU)\nLoading vision modules \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 100% 30/30 0:00:00\nLoading model modules  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 100% 35/35 0:00:00\n15:12:04.252 INFO:     Model loaded in 26.9 s\n\n15:12:04.252 WARNING:  Disabling authentication makes your instance vulnerable.\n                       Set the `disable_auth` flag to False in config.yml if you\n                       want to share this instance with others.\n15:12:04.263 INFO:     Serving OAI API on http://127.0.0.1:5600 (docs at\n                       http://127.0.0.1:5600/redoc)\n15:12:07.967 INFO:     #2 chat/completions: 95,431 prompt tokens \u00b7 temperature:\n                       0, greedy (req), max_tokens: 120 (req)\n15:13:51.649 INFO:     #2 chat/completions: 35 tokens generated at 7.7 T/s \u00b7\n                       prompt 95,431 tokens, none cached, 95,431 new in 99.0 s\n                       (964 T/s) \u00b7 first token 99.0 s, total 103.6 s\n15:13:51.767 WARNING:  Shutdown signal called. Exiting gracefully.\n15:13:52.091 INFO:     Model unloaded.\n",
+ "pass": true
+}

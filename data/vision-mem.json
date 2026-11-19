@@ -1,0 +1,30 @@
+[
+ {
+  "side": 1024,
+  "pixels": 1048576,
+  "image_tokens": 1024,
+  "tower_gib": 0.9322085380554199,
+  "peak_above_tower_gib": 0.11090087890625
+ },
+ {
+  "side": 2048,
+  "pixels": 4194304,
+  "image_tokens": 4096,
+  "tower_gib": 0.9322085380554199,
+  "peak_above_tower_gib": 0.443603515625
+ },
+ {
+  "side": 2896,
+  "pixels": 8386816,
+  "image_tokens": 8100,
+  "tower_gib": 0.9322085380554199,
+  "peak_above_tower_gib": 0.8772435188293457
+ },
+ {
+  "side": 4096,
+  "pixels": 16777216,
+  "image_tokens": 16384,
+  "tower_gib": 0.9322085380554199,
+  "peak_above_tower_gib": 1.7744140625
+ }
+]

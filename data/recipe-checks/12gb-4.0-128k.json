@@ -1,0 +1,42 @@
+{
+ "model": "exl3-4.0bpw",
+ "card_gib": 12.0,
+ "context": 131072,
+ "kv": "Q8",
+ "headroom_gib": 1.0,
+ "torch_budget_gib": 10.54,
+ "status": "ok",
+ "seconds": 148.6,
+ "usage": {
+  "prompt_tokens": 128341,
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  },
+  "prompt_time": 143.64,
+  "prompt_tokens_per_sec": 893.49,
+  "completion_tokens": 36,
+  "completion_tokens_details": {
+   "accepted_prediction_tokens": 0,
+   "rejected_prediction_tokens": 0
+  },
+  "completion_time": 4.09,
+  "completion_tokens_per_sec": 8.8,
+  "total_tokens": 128377,
+  "total_time": 147.86
+ },
+ "answer": "1. 6:45\n2. Kaldor quarry\n3. The Caro-Kann Defence\n4. 23\n5. 340",
+ "correct": 5,
+ "per_fact": [
+  true,
+  true,
+  true,
+  true,
+  true
+ ],
+ "refusal": false,
+ "doc_tokens": 127432,
+ "torch_peak_gib": 9.74,
+ "card_estimate_gib": 10.2,
+ "tabby_log_tail": "x_seq_len 131,072 tokens (configured),\n                       cache_size 131,072 tokens\n15:14:52.892 INFO:     Recurrent state storage: fp32\n15:14:52.918 INFO:     Using template \"chat_template\" for chat completions.\n15:14:52.919 INFO:     Response parsing: tool format qwen3_coder (config),\n                       reasoning tags <think> </think> (template)\n15:14:56.713 INFO:     Loading model /out/exl3-4.0bpw (single GPU)\nLoading vision modules \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 100% 30/30 0:00:00\nLoading model modules  \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501 100% 35/35 0:00:00\n15:15:18.495 INFO:     Model loaded in 25.6 s\n\n15:15:18.496 WARNING:  Disabling authentication makes your instance vulnerable.\n                       Set the `disable_auth` flag to False in config.yml if you\n                       want to share this instance with others.\n15:15:18.497 INFO:     Serving OAI API on http://127.0.0.1:5600 (docs at\n                       http://127.0.0.1:5600/redoc)\n15:15:23.151 INFO:     #2 chat/completions: 128,341 prompt tokens \u00b7 temperature:\n                       0, greedy (req), max_tokens: 120 (req)\n15:17:51.104 INFO:     #2 chat/completions: 36 tokens generated at 8.8 T/s \u00b7\n                       prompt 128,341 tokens, none cached, 128,341 new in 143.6\n                       s (893 T/s) \u00b7 queued 0.13 s, first token 143.8 s, total\n                       147.9 s\n15:17:51.305 WARNING:  Shutdown signal called. Exiting gracefully.\n15:17:51.617 INFO:     Model unloaded.\n",
+ "pass": true
+}

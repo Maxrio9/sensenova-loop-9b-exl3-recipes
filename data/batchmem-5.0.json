@@ -1,0 +1,20 @@
+[
+ {
+  "batch": 1,
+  "pool": 65536,
+  "finished": 1,
+  "peak": 9181778944
+ },
+ {
+  "batch": 4,
+  "pool": 65536,
+  "finished": 4,
+  "peak": 9720583168
+ },
+ {
+  "batch": 8,
+  "pool": 65536,
+  "finished": 8,
+  "peak": 10439010304
+ }
+]
