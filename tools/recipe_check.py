@@ -43,10 +43,15 @@ def main():
     p.add_argument('--card', type=float, required=True); p.add_argument('--context', type=int, default=0)
     p.add_argument('--card-mib', type=int, help='exact device total to cap against (nvidia-smi MiB); default card*1024')
     p.add_argument('--headroom', type=float, default=1.0); p.add_argument('--port', type=int, default=5600)
+    p.add_argument('--server-python', help="python that runs TabbyAPI (default: this one), e.g. TabbyAPI's venv")
+    p.add_argument('--no-cap', action='store_true', help='real card: no PyTorch memory cap, only measure (nvidia-smi peak)')
     a = p.parse_args()
     a.kv = a.kv or 'Q8'; a.tabby = a.tabby or '/tabby'
-    import torch
-    total = torch.cuda.get_device_properties(0).total_memory / 2**30
+    if a.no_cap:
+        total = int(subprocess.check_output(['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits']).split()[0]) / 1024
+    else:
+        import torch
+        total = torch.cuda.get_device_properties(0).total_memory / 2**30
     total_card = a.card_mib / 1024 if a.card_mib else a.card
     budget = total_card - a.headroom - NON_TORCH_GIB
     if a.config:   # a published recipe file, used as-is; only server/model location is added
@@ -56,21 +61,38 @@ def main():
         body = body.replace('model:\n', 'model:\n  model_dir: ' + json.dumps(os.path.dirname(a.model)) + '\n  backend: exllamav3\n', 1)
         open('/tmp/recipe.yml', 'w').write(f'network:\n  host: 127.0.0.1\n  port: {a.port}\n  disable_auth: true\n'
                                            '  disable_fetch_requests: true\n  web_ui: false\n' + body)
-    cfg = open('/workspace/desktop/tabby/config.yml.tmpl').read()
-    cfg = (cfg.replace('MODEL_PARENT', json.dumps(os.path.dirname(a.model))).replace('MODEL_NAME', json.dumps(os.path.basename(a.model)))
+    if not a.config:
+      cfg = open('/workspace/desktop/tabby/config.yml.tmpl').read()
+      cfg = (cfg.replace('MODEL_PARENT', json.dumps(os.path.dirname(a.model))).replace('MODEL_NAME', json.dumps(os.path.basename(a.model)))
               .replace('PORT', str(a.port)).replace('MAX_SEQ_LEN', str(a.context))
               .replace('  chunk_size: 256', '  chunk_size: 2048').replace('  max_batch_size: 4', '  max_batch_size: 1'))
-    cfg = cfg.replace('  tool_format: qwen3_coder', f'  tool_format: qwen3_coder\n  cache_mode: {a.kv}\n  vision: true')
-    if not a.config: open('/tmp/recipe.yml', 'w').write(cfg)
+      cfg = cfg.replace('  tool_format: qwen3_coder', f'  tool_format: qwen3_coder\n  cache_mode: {a.kv}\n  vision: true')
+      open('/tmp/recipe.yml', 'w').write(cfg)
     # sitecustomize applies the cap inside the Tabby process before any model memory is allocated
     os.makedirs('/tmp/cap', exist_ok=True)
-    open('/tmp/cap/sitecustomize.py', 'w').write(
+    if not a.no_cap: open('/tmp/cap/sitecustomize.py', 'w').write(
         'import atexit, os, torch\n'
         f'torch.cuda.set_per_process_memory_fraction({budget / total:.6f}, 0)\n'
         "atexit.register(lambda: open('/tmp/peak.txt','w').write(str(torch.cuda.max_memory_allocated())))\n")
     env = dict(os.environ, PYTHONPATH='/tmp/cap:' + os.environ.get('PYTHONPATH', ''))
-    srv = subprocess.Popen([sys.executable, 'main.py', '--config', '/tmp/recipe.yml'], cwd=a.tabby, env=env,
+    if a.no_cap and os.path.exists('/tmp/cap/sitecustomize.py'): os.remove('/tmp/cap/sitecustomize.py')
+    srv = subprocess.Popen([a.server_python or sys.executable, 'main.py', '--config', '/tmp/recipe.yml'], cwd=a.tabby, env=env,
                            stdout=open('/tmp/tabby.log', 'w'), stderr=subprocess.STDOUT)
+    peaks = {'card_mib': 0, 'server_mib': 0}
+    if a.no_cap:   # sample nvidia-smi: whole card (desktop included) and the server process alone
+        import threading
+        def sample():
+            while srv.poll() is None:
+                try:
+                    peaks['card_mib'] = max(peaks['card_mib'], int(subprocess.check_output(
+                        ['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits']).split()[0]))
+                    for line in subprocess.check_output(['nvidia-smi', '--query-compute-apps=pid,used_memory',
+                                                         '--format=csv,noheader,nounits']).decode().splitlines():
+                        pid, mib = [x.strip() for x in line.split(',')]
+                        if int(pid) == srv.pid: peaks['server_mib'] = max(peaks['server_mib'], int(mib))
+                except Exception: pass
+                time.sleep(0.5)
+        threading.Thread(target=sample, daemon=True).start()
     res = dict(model=os.path.basename(a.model), card_gib=a.card, context=a.context, kv=a.kv, headroom_gib=a.headroom,
                torch_budget_gib=round(budget, 2), status='fail')
     try:
@@ -111,10 +133,11 @@ def main():
             peak = int(open('/tmp/peak.txt').read()); res['torch_peak_gib'] = round(peak / 2**30, 2)
             res['card_estimate_gib'] = round(peak / 2**30 + NON_TORCH_GIB, 2)
         res['tabby_log_tail'] = open('/tmp/tabby.log').read()[-1500:]
+    if a.no_cap: res.update(card_peak_gib=round(peaks['card_mib'] / 1024, 2), server_peak_gib=round(peaks['server_mib'] / 1024, 2))
     res['pass'] = res['status'] == 'ok' and res.get('correct') == 5
     json.dump(res, open(a.out, 'w'), indent=1)
     print(f"RECIPE {res['model']} {a.card:g}GB {a.context // 1024}k {a.kv}: pass={res['pass']} correct={res.get('correct')} "
-          f"card~{res.get('card_estimate_gib')} GiB budget {res['torch_budget_gib']} {res.get('seconds')}s speed={[x['tok_s'] for x in res.get('speed', [])]} err={res.get('error', '')[:200]}", flush=True)
+          f"card~{res.get('card_estimate_gib')} GiB card_peak={res.get('card_peak_gib')} server_peak={res.get('server_peak_gib')} budget {res['torch_budget_gib']} {res.get('seconds')}s speed={[x['tok_s'] for x in res.get('speed', [])]} err={res.get('error', '')[:200]}", flush=True)
 
 
 if __name__ == '__main__':

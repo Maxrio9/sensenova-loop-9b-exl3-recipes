@@ -34,8 +34,13 @@ You need an NVIDIA GPU, Python 3.12 and the CUDA toolkit (the ExLlamaV3 build co
 2. **Install ExLlamaV3 with SenseNova Loop support** into TabbyAPI's environment (this model is not in the official release yet; this takes a few minutes):
    ```bash
    source venv/bin/activate        # Windows: venv\Scripts\activate
-   pip install --no-deps --force-reinstall "git+https://github.com/Maxrio9/exllamav3.git@sensenova-loop-mtp"
+   pip install ninja wheel
+   pip install --no-deps --no-build-isolation --force-reinstall "git+https://github.com/Maxrio9/exllamav3.git@sensenova-loop-mtp"
    ```
+   If `uv` is installed, TabbyAPI made its environment with it and there is no `pip` inside: use `uv pip install ninja wheel` and
+   `uv pip install --no-deps --no-build-isolation --reinstall "git+…"` instead. `--no-build-isolation` makes it build against
+   the PyTorch TabbyAPI installed. On Linux, if the build stops with "unsupported GNU version", your compiler is newer than your
+   CUDA toolkit supports: add `CC=gcc-15 CXX=g++-15` (or another supported version) in front of the command.
 3. **Download the model version for your card** (here the 24 GB one):
    ```bash
    hf download Maxrio/SenseNova-Loop-9B-exl3 --revision 6.0bpw --local-dir models/SenseNova-Loop-9B-exl3-6.0bpw
