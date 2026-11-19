@@ -90,6 +90,17 @@ def main():
         ok, refusal = grade(answer)
         res.update(status='ok', seconds=round(time.time() - t0, 1), usage=d.get('usage'), answer=answer, correct=sum(ok),
                    per_fact=ok, refusal=refusal, doc_tokens=doc_tokens)
+        # short generation, to see the decode speed of this config (MTP drafting on or off)
+        speed = []
+        for prompt in ('Write a Python function that parses an ISO 8601 date string without using datetime, with tests.',
+                       'Explain in three paragraphs why the sky is blue.'):
+            body = dict(model=os.path.basename(a.model), messages=[{'role': 'user', 'content': prompt}], max_tokens=400,
+                        temperature=0, chat_template_kwargs={'enable_thinking': False})
+            t0 = time.time()
+            d = json.load(urllib.request.urlopen(urllib.request.Request(f'http://127.0.0.1:{a.port}/v1/chat/completions',
+                          json.dumps(body).encode(), {'Content-Type': 'application/json'}), timeout=600))
+            n = d['usage']['completion_tokens']; speed.append(dict(prompt=prompt[:40], tokens=n, tok_s=round(n / (time.time() - t0), 1)))
+        res['speed'] = speed
     except Exception as e:
         res['error'] = repr(e)[-2000:]
     finally:
@@ -103,7 +114,7 @@ def main():
     res['pass'] = res['status'] == 'ok' and res.get('correct') == 5
     json.dump(res, open(a.out, 'w'), indent=1)
     print(f"RECIPE {res['model']} {a.card:g}GB {a.context // 1024}k {a.kv}: pass={res['pass']} correct={res.get('correct')} "
-          f"card~{res.get('card_estimate_gib')} GiB budget {res['torch_budget_gib']} {res.get('seconds')}s err={res.get('error', '')[:200]}", flush=True)
+          f"card~{res.get('card_estimate_gib')} GiB budget {res['torch_budget_gib']} {res.get('seconds')}s speed={[x['tok_s'] for x in res.get('speed', [])]} err={res.get('error', '')[:200]}", flush=True)
 
 
 if __name__ == '__main__':

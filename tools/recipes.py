@@ -30,6 +30,17 @@ RECIPES = {12: '4.0', 16: '5.0', 24: '6.0', 32: '8.0'}
 DISPLAY_GIB = 1.0       # desktop/compositor share when the card drives a display (--desktop)
 SLACK_GIB = 0.3         # PyTorch allocator and library slack
 VISION_TOWER_GIB = 0.932  # BF16 tower, included in base; removed with --no-vision (data/vision-mem.json)
+MTP_HEAD_GIB = 0.23     # 4-bit MTP head + its buffers (spark2 spec runs: +0.228 GiB), not in base; removed with --no-mtp
+MTP_KV_SHARE = 1 / 14   # the head's one attention layer vs the target's 14 attention visits (FP16 slope / 4 KiB per token)
+MTP_DRAFT_TOKENS = 4    # data/mtp: window 4 + hybrid 7 was the fastest exact setting on GB10
+MTP_HYBRID_TOKENS = 7
+MTP_SPARSE_HEAD = 16384  # vocabulary columns of the sparse draft head: 2.38x vs 2.50x for 65536, at 0.25 instead of 1.0 GiB
+HIDDEN = 4096
+
+
+def sparse_head_gib(cols):
+    # SparseHead at full capacity: fp16 unembedding columns + fp16 embedding rows (MTP) + fp32 scratch (16*4 per column)
+    return cols * (HIDDEN * 2 * 2 + 16 * 4 * 4) / 2**30
 IMAGE_GIB_PER_MP = 0.111  # vision tower working memory per MP while encoding one image: the 4 MP point of data/vision-mem.json (0.444 GiB), conservative vs the 0.106 slope
 
 
@@ -73,14 +84,29 @@ def reserve_gib(desktop=False, vision=True, image_mp=4.0):
     return SLACK_GIB + (DISPLAY_GIB if desktop else 0.0) + (IMAGE_GIB_PER_MP * image_mp if vision else 0.0)
 
 
-def pool_tokens(slope, base, branch, kv, card_mib, reserve, parallel=1, vision=True, step=4096):
-    b = base[branch][kv] - (0.0 if vision else VISION_TOWER_GIB)
-    free = card_mib / 1024 - reserve - b - CHUNK_GIB - PER_REQUEST_GIB * (parallel - 1)
-    return int(free / slope[kv] // step * step)
+def fixed_gib(base, branch, kv, parallel=1, vision=True, mtp=True):
+    return (base[branch][kv] - (0.0 if vision else VISION_TOWER_GIB) + (MTP_HEAD_GIB + sparse_head_gib(MTP_SPARSE_HEAD) if mtp else 0.0)
+            + CHUNK_GIB + PER_REQUEST_GIB * (parallel - 1))
 
 
-def config(branch, kv, cache_size, parallel, vision=True):
+def per_token_gib(slope, kv, mtp=True):
+    return slope[kv] * (1 + (MTP_KV_SHARE if mtp else 0.0))
+
+
+def pool_tokens(slope, base, branch, kv, card_mib, reserve, parallel=1, vision=True, mtp=True, step=4096):
+    free = card_mib / 1024 - reserve - fixed_gib(base, branch, kv, parallel, vision, mtp)
+    return int(free / per_token_gib(slope, kv, mtp) // step * step)
+
+
+def config(branch, kv, cache_size, parallel, vision=True, mtp=True):
     seq = min(cache_size, NATIVE_MAX)
+    draft = "" if not mtp else f"""
+draft_model:
+  draft_mode: mtp            # the model's own MTP head drafts tokens; output is the same, decoding ~2-3x faster
+  draft_num_tokens: {MTP_DRAFT_TOKENS}
+  draft_cache_mode: {kv.upper()}
+  hybrid_draft_tokens: {MTP_HYBRID_TOKENS}     # also copy repeated passages (edits, quotes) in one pass
+""" + (f"  sparse_draft_head: {MTP_SPARSE_HEAD}   # draft from the most frequent tokens only; checking still uses all\n" if MTP_SPARSE_HEAD else "")
     return f"""model:
   model_name: SenseNova-Loop-9B-exl3-{branch}bpw
   max_seq_len: {seq}
@@ -92,7 +118,7 @@ def config(branch, kv, cache_size, parallel, vision=True):
   warmup: true               # allocate kernels/workspaces at load, not during the first request
   tool_format: qwen3_coder
   vision: {"true" if vision else "false"}
-"""
+""" + draft
 
 
 def main():
@@ -104,6 +130,7 @@ def main():
     p.add_argument('--desktop', action='store_true', help='the card also drives your display: keep 1 GiB free for it')
     p.add_argument('--no-vision', action='store_true', help='text only: do not load the vision tower')
     p.add_argument('--image-mp', type=float, default=4.0, help='largest image you will send, in megapixels (default 4)')
+    p.add_argument('--no-mtp', action='store_true', help='no speculative decoding with the MTP head (saves ~0.25 GiB + 7%% of the KV cache)')
     p.add_argument('--parallel', type=int, default=1, help='requests served at the same time (default 1)')
     p.add_argument('--write-configs', action='store_true', help='regenerate configs/*.yml and print the table')
     a = p.parse_args()
@@ -113,11 +140,12 @@ def main():
         mib = a.card_mib or CARDS[a.card]
         branch = a.branch or RECIPES.get(a.card) or max((b for c, b in RECIPES.items() if CARDS[c] <= mib), default='4.0')
         vision = not a.no_vision
-        n = pool_tokens(slope, base, branch, a.kv, mib, reserve_gib(a.desktop, vision, a.image_mp), a.parallel, vision)
+        mtp = not a.no_mtp
+        n = pool_tokens(slope, base, branch, a.kv, mib, reserve_gib(a.desktop, vision, a.image_mp), a.parallel, vision, mtp)
         if n < 4096: p.error('does not fit: choose a smaller --branch or --kv')
         print(f'# {mib} MiB card, {branch}bpw, {a.kv.upper()} KV, {"desktop" if a.desktop else "dedicated GPU"}, '
-              f'{"vision up to %g MP" % a.image_mp if vision else "text only"}, {a.parallel} request(s); generated by tools/recipes.py')
-        print(config(branch, a.kv, n, a.parallel, vision), end=''); return
+              f'{"vision up to %g MP" % a.image_mp if vision else "text only"}, {a.parallel} request(s){", MTP drafting" if mtp else ""}; generated by tools/recipes.py')
+        print(config(branch, a.kv, n, a.parallel, vision, mtp), end=''); return
     out = ROOT / 'configs'; out.mkdir(exist_ok=True)
     for f in out.glob('tabby-*.yml'): f.unlink()
     print('| Card | Branch | desktop | parallel | cache_size | max_seq_len | GiB used | card GiB |')
@@ -125,7 +153,7 @@ def main():
         for desktop in (False, True):
             for par in (1, 4):
                 n = pool_tokens(slope, base, branch, 'q8', CARDS[card], reserve_gib(desktop), par)
-                used = base[branch]['q8'] + CHUNK_GIB + PER_REQUEST_GIB * (par - 1) + slope['q8'] * n
+                used = fixed_gib(base, branch, 'q8', par) + per_token_gib(slope, 'q8') * n
                 name = f'tabby-{card}gb' + ('-desktop' if desktop else '') + ('' if par == 1 else f'-{par}x') + '.yml'
                 (out / name).write_text(f'# {card} GB card, {"also driving the display" if desktop else "used only for the model"}: '
                                         f'{branch}bpw, Q8 KV, {par} request(s) at a time; generated by tools/recipes.py\n'

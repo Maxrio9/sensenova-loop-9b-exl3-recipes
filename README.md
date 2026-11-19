@@ -7,9 +7,9 @@ with as much context as your graphics card can hold. Text and images, quantized 
 
 | Your GPU | Model version | Context, GPU used only for the model | Context, GPU also runs your desktop |
 |---|---|---:|---:|
-| 12 GB | `4.0bpw` | 160k tokens ([config](configs/tabby-12gb.yml)) | 128k ([config](configs/tabby-12gb-desktop.yml)) |
-| 16 GB | `5.0bpw` | 268k ([config](configs/tabby-16gb.yml)) | 232k ([config](configs/tabby-16gb-desktop.yml)) |
-| 24 GB | `6.0bpw` | 504k ([config](configs/tabby-24gb.yml)) | 472k ([config](configs/tabby-24gb-desktop.yml)) |
+| 12 GB | `4.0bpw` | 136k tokens ([config](configs/tabby-12gb.yml)) | 104k ([config](configs/tabby-12gb-desktop.yml)) |
+| 16 GB | `5.0bpw` | 232k ([config](configs/tabby-16gb.yml)) | 204k ([config](configs/tabby-16gb-desktop.yml)) |
+| 24 GB | `6.0bpw` | 456k ([config](configs/tabby-24gb.yml)) | 424k ([config](configs/tabby-24gb-desktop.yml)) |
 | 32 GB | `8.0bpw` | 512k, the model's maximum ([config](configs/tabby-32gb.yml)) | 512k ([config](configs/tabby-32gb-desktop.yml)) |
 
 **If your monitor is plugged into this GPU, use the desktop config.** It keeps 1 GB free for your screen and apps.
@@ -17,6 +17,9 @@ Want several chats at once (for example agents running in parallel)? Each config
 (e.g. [tabby-24gb-4x.yml](configs/tabby-24gb-4x.yml)): four requests at a time, sharing slightly less total context.
 
 All versions stay close to the original model; 6.0 and 8.0 are practically indistinguishable from it.
+
+**Fast by default:** every config lets the model's built-in MTP head draft tokens ahead (speculative decoding). Text comes out
+about **2.4x faster** (code about 2.9x) and is exactly the same as without it. It costs about 0.5 GB plus 7% of the context.
 
 ## Install
 
@@ -31,13 +34,14 @@ You need an NVIDIA GPU, Python 3.12 and the CUDA toolkit (the ExLlamaV3 build co
 2. **Install ExLlamaV3 with SenseNova Loop support** into TabbyAPI's environment (this model is not in the official release yet; this takes a few minutes):
    ```bash
    source venv/bin/activate        # Windows: venv\Scripts\activate
-   pip install --no-deps --force-reinstall "git+https://github.com/Maxrio9/exllamav3.git@sensenova-loop"
+   pip install --no-deps --force-reinstall "git+https://github.com/Maxrio9/exllamav3.git@sensenova-loop-mtp"
    ```
 3. **Download the model version for your card** (here the 24 GB one):
    ```bash
    hf download Maxrio/SenseNova-Loop-9B-exl3 --revision 6.0bpw --local-dir models/SenseNova-Loop-9B-exl3-6.0bpw
    ```
-4. **Use the config:** copy `config_sample.yml` to `config.yml`, replace its `model:` section with the one from your config file,
+   Downloaded before 19 November 2026? Run the same command again: it adds the MTP head (`model-mtp.safetensors`, 0.12 GB).
+4. **Use the config:** copy `config_sample.yml` to `config.yml`, replace its `model:` and `draft_model:` sections with the ones from your config file,
    and add `model_dir: models` to it. Then start TabbyAPI again (`./start.sh`). It serves an OpenAI-compatible API on port 5000.
 
 Tested with TabbyAPI at commit `4728158`. If you later update TabbyAPI with `--update-deps`, repeat step 2.
@@ -47,6 +51,8 @@ Tested with TabbyAPI at commit `4728158`. If you later update TabbyAPI with `--u
 - **About 0.75 GB stays free** as a safety margin (plus 1 GB in the desktop configs). If other programs use the GPU heavily
   (games, video, a browser with many tabs), use the desktop config or lower `cache_size` and `max_seq_len`.
 - **Images up to about 4 megapixels** (2048 x 2048) are covered. Larger images need about 0.1 GB extra per megapixel while they are read.
+- **The first few thousand tokens are slower** (about 1.7x instead of 2.4x) while the draft head learns which tokens you use;
+  it remembers them in `~/.cache/exllamav3` for the next start.
 - **Thinking mode** is off unless you ask for it: send `"chat_template_kwargs": {"enable_thinking": true}` in the request.
   Tool calls work out of the box.
 
@@ -67,6 +73,7 @@ python tools/recipes.py --card 16 --no-vision     # text only: no vision tower, 
 | `--no-vision` | Text only: skip the vision tower (about 1.4 GB more for context) |
 | `--branch 8.0/6.0/5.0/4.0` | Trade quality for context: higher = closer to the original, lower = more context |
 | `--kv q8/fp16` | KV cache type; Q8 (default) costs no measurable quality and holds 1.8x the context of FP16 |
+| `--no-mtp` | No speculative decoding: about 7% more context and 0.5 GB free, at about 40% of the speed |
 | `--parallel N` | Serve N requests at once |
 | `--image-mp N` | Largest image you will send, in megapixels (default 4) |
 
@@ -75,9 +82,12 @@ python tools/recipes.py --card 16 --no-vision     # text only: no vision tower, 
 - **Quality:** 8.0 bpw matches the original model within measurement noise; 6.0 and 5.0 bpw are closer to it than a community
   FP8 checkpoint; 4.0 bpw has about a quarter of the error of the official 4-bit AWQ release. Benchmarks (IFEval, MATH-500,
   German math, tool calling, extraction) are within noise of the original for all tested versions.
-- **The configs work as stated:** the 12 and 16 GB desktop configs ran unchanged in TabbyAPI with memory capped to the card, a 4 MP image
-  and a prompt filling the whole context: all five facts hidden in the text were found, inside the memory limit. The memory model behind all
+- **The configs work as stated:** the 16 GB desktop config (with MTP) ran unchanged in TabbyAPI with memory capped to the card, a 4 MP image
+  and a 205k-token prompt filling the whole context: all five facts hidden in the text were found, using 14.0 of 14.2 GB allowed.
+  The 12 and 16 GB configs without MTP passed the same check earlier. The memory model behind all
   configs matched every real run within 0.4 GB.
+- **Speed with MTP** (5.0 bpw on a DGX Spark, greedy, output identical to plain decoding in every test): 22 tok/s plain,
+  64 tok/s writing code, 57 on math with thinking, 58 editing a code block, 34 for prose and chat; 2.38x on average over ten tasks.
 - **Q8 KV cache is free:** quality with Q8 is identical to FP16 in our measurements; Q4 is measurably worse, so it is not used.
 - **Long context:** five facts hidden at 10-90% depth were all found at 128k (FP16 and Q8 cache), 226k and 458k; at the full 512k, 4 of 5.
 
