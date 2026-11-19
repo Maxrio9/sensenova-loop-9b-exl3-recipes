@@ -7,6 +7,9 @@ using the EXL3 quants at [Maxrio/SenseNova-Loop-9B-exl3](https://huggingface.co/
 
 ## Pick your card
 
+Desktop configs (`*-desktop*.yml`, the card also drives a display). The default configs for a GPU used only for the model
+drop the 1.0 GiB display reserve and get about 33k more Q8 tokens: 160k / 268k / 504k / 512k (pool 680k).
+
 | Card | Branch | KV cache | Longest request | KV pool, 1 request | KV pool, 4 parallel | Config |
 |---|---|---|---:|---:|---:|---|
 | 12 GB | `4.0bpw` | Q8 | 128k | 131,072 | 114,688 | [`tabby-12gb.yml`](../configs/tabby-12gb.yml) / [`-4x`](../configs/tabby-12gb-4x.yml) |
@@ -24,13 +27,13 @@ Q8 KV cache costs no measurable quality; Q4 KV does (see [Quality](#quality)).
 
 ## What each recipe leaves free
 
-Every config leaves **1.75 GiB** of the card unused:
+The desktop configs leave **1.74 GiB** of the card unused, the default configs **0.74 GiB** (no display share):
 
 | Reserve | GiB | Why |
 |---|---:|---|
-| Desktop / display | 1.0 | A Windows or Linux desktop driving the screen; a headless server can give this to the pool (+33k Q8 tokens) |
+| Desktop / display (desktop configs only) | 1.0 | A Windows or Linux desktop driving the screen; `--desktop` in tools/recipes.py |
 | Allocator and library slack | 0.3 | PyTorch fragmentation, kernel workspaces |
-| One image up to 4 MP | 0.45 | The vision tower needs 0.106 GiB of working memory per megapixel while it encodes an image |
+| One image up to 4 MP | 0.44 | Measured vision tower working memory while encoding a 4 MP image (about 0.11 GiB per megapixel) |
 
 The model allows images up to 16.8 MP (4096 x 4096), which needs 1.8 GiB while encoding. For larger images either lower `cache_size`
 (0.106 GiB per MP above 4 MP, about 3.5k Q8 tokens) or cap the image size in the model's `preprocessor_config.json` (`size.longest_edge`
@@ -40,7 +43,7 @@ for example a browser with hardware acceleration, also come out of the reserve.
 To compute your own recipe (exact card size from `nvidia-smi --query-gpu=memory.total --format=csv`, any branch, KV type, reserve, parallel slots):
 
 ```bash
-python tools/recipes.py --card-mib 16376 --branch 6.0 --kv q8 --reserve 1.75 --parallel 2
+python tools/recipes.py --card-mib 16376 --branch 6.0 --kv q8 --desktop --parallel 2
 ```
 
 ## How to run
@@ -82,8 +85,8 @@ How it was measured:
 
 | Card | What ran | Result |
 |---|---|---|
-| 12 GB | [`tabby-12gb.yml`](../configs/tabby-12gb.yml) as published: 130,343-token prompt + 4 MP image | 5/5 facts, 10.2 GiB (limit with reserves 10.7) |
-| 16 GB | [`tabby-16gb.yml`](../configs/tabby-16gb.yml) as published: 237,385-token prompt + 4 MP image | 5/5 facts, 14.1 GiB (limit 14.7) |
+| 12 GB | [`tabby-12gb-desktop.yml`](../configs/tabby-12gb-desktop.yml) as published: 130,343-token prompt + 4 MP image | 5/5 facts, 10.2 GiB (limit with reserves 10.7) |
+| 16 GB | [`tabby-16gb-desktop.yml`](../configs/tabby-16gb-desktop.yml) as published: 237,385-token prompt + 4 MP image | 5/5 facts, 14.1 GiB (limit 14.7) |
 | 24 GB | Predicted 22.2 GiB. Closest run: 6.0bpw at 448k in TabbyAPI, small image | 5/5 facts, 21.2 GiB measured vs 21.5 predicted |
 | 32 GB | Predicted 30.0 GiB. Closest run: 8.0bpw at the full 512k in TabbyAPI, small image | 25.6 GiB measured vs 26.0 predicted; 4 of 5 facts |
 

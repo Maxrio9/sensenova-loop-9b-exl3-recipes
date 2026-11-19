@@ -5,15 +5,16 @@ with as much context as your graphics card can hold. Text and images, quantized 
 
 ## Pick your card
 
-| Your GPU | Model version | Context | Config |
-|---|---|---:|---|
-| 12 GB | `4.0bpw` | 128k tokens | [tabby-12gb.yml](configs/tabby-12gb.yml) |
-| 16 GB | `5.0bpw` | 232k tokens | [tabby-16gb.yml](configs/tabby-16gb.yml) |
-| 24 GB | `6.0bpw` | 472k tokens | [tabby-24gb.yml](configs/tabby-24gb.yml) |
-| 32 GB | `8.0bpw` | 512k tokens (the model's maximum) | [tabby-32gb.yml](configs/tabby-32gb.yml) |
+| Your GPU | Model version | Context, GPU used only for the model | Context, GPU also runs your desktop |
+|---|---|---:|---:|
+| 12 GB | `4.0bpw` | 160k tokens ([config](configs/tabby-12gb.yml)) | 128k ([config](configs/tabby-12gb-desktop.yml)) |
+| 16 GB | `5.0bpw` | 268k ([config](configs/tabby-16gb.yml)) | 232k ([config](configs/tabby-16gb-desktop.yml)) |
+| 24 GB | `6.0bpw` | 504k ([config](configs/tabby-24gb.yml)) | 472k ([config](configs/tabby-24gb-desktop.yml)) |
+| 32 GB | `8.0bpw` | 512k, the model's maximum ([config](configs/tabby-32gb.yml)) | 512k ([config](configs/tabby-32gb-desktop.yml)) |
 
-Want several chats at once (for example agents running in parallel)? Use the `-4x` config next to yours, e.g.
-[tabby-24gb-4x.yml](configs/tabby-24gb-4x.yml): four requests at a time, sharing slightly less total context.
+**If your monitor is plugged into this GPU, use the desktop config.** It keeps 1 GB free for your screen and apps.
+Want several chats at once (for example agents running in parallel)? Each config has a `-4x` variant next to it
+(e.g. [tabby-24gb-4x.yml](configs/tabby-24gb-4x.yml)): four requests at a time, sharing slightly less total context.
 
 All versions stay close to the original model; 6.0 and 8.0 are practically indistinguishable from it.
 
@@ -43,18 +44,42 @@ Tested with TabbyAPI at commit `4728158`. If you later update TabbyAPI with `--u
 
 ## Good to know
 
-- **The configs leave about 1.75 GB of the card free**: 1 GB for your desktop and display, the rest as a safety margin.
-  On a server without a display you can give the model more (see below). If other programs use the GPU heavily (games, video,
-  a browser with many tabs), lower `cache_size` and `max_seq_len` in the config.
-- **Images up to about 4 megapixels** (2048 x 2048) are covered. Much larger images need extra memory while they are read, about
-  0.1 GB per megapixel; resize them, or lower `cache_size` a little.
+- **About 0.75 GB stays free** as a safety margin (plus 1 GB in the desktop configs). If other programs use the GPU heavily
+  (games, video, a browser with many tabs), use the desktop config or lower `cache_size` and `max_seq_len`.
+- **Images up to about 4 megapixels** (2048 x 2048) are covered. Larger images need about 0.1 GB extra per megapixel while they are read.
 - **Thinking mode** is off unless you ask for it: send `"chat_template_kwargs": {"enable_thinking": true}` in the request.
-  Tool calls work out of the box (`tool_format: qwen3_coder` is set).
-- **Different card size, or a headless server?** Compute your own config:
-  ```bash
-  python tools/recipes.py --card-mib 24564 --branch 6.0 --reserve 0.75
-  ```
-  (`--card-mib` is the total from `nvidia-smi --query-gpu=memory.total --format=csv`; `--reserve 0.75` drops the 1 GB display share.)
+  Tool calls work out of the box.
+
+## Make your own config
+
+`tools/recipes.py` prints a config for your exact setup (needs only Python):
+
+```bash
+python tools/recipes.py --card 24                 # 24 GB card used only for the model
+python tools/recipes.py --card 24 --desktop       # ... that also drives your monitor
+python tools/recipes.py --card 16 --no-vision     # text only: no vision tower, ~45k more tokens
+```
+
+| Flag | What it does |
+|---|---|
+| `--card 12/16/24/32` or `--card-mib N` | Your card; `N` is the total from `nvidia-smi --query-gpu=memory.total --format=csv` |
+| `--desktop` | Keep 1 GB free for your display |
+| `--no-vision` | Text only: skip the vision tower (about 1.4 GB more for context) |
+| `--branch 8.0/6.0/5.0/4.0` | Trade quality for context: higher = closer to the original, lower = more context |
+| `--kv q8/fp16` | KV cache type; Q8 (default) costs no measurable quality and holds 1.8x the context of FP16 |
+| `--parallel N` | Serve N requests at once |
+| `--image-mp N` | Largest image you will send, in megapixels (default 4) |
+
+## Test results
+
+- **Quality:** 8.0 bpw matches the original model within measurement noise; 6.0 and 5.0 bpw are closer to it than a community
+  FP8 checkpoint; 4.0 bpw has about a quarter of the error of the official 4-bit AWQ release. Benchmarks (IFEval, MATH-500,
+  German math, tool calling, extraction) are within noise of the original for all tested versions.
+- **The configs work as stated:** the 12 and 16 GB desktop configs ran unchanged in TabbyAPI with memory capped to the card, a 4 MP image
+  and a prompt filling the whole context: all five facts hidden in the text were found, inside the memory limit. The memory model behind all
+  configs matched every real run within 0.4 GB.
+- **Q8 KV cache is free:** quality with Q8 is identical to FP16 in our measurements; Q4 is measurably worse, so it is not used.
+- **Long context:** five facts hidden at 10-90% depth were all found at 128k (FP16 and Q8 cache), 226k and 458k; at the full 512k, 4 of 5.
 
 ## More detail
 

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Memory model and TabbyAPI configs for the SenseNova-Loop-9B EXL3 quants.
 
-    python tools/recipes.py                       # print the model, write configs/*.yml and print the recipe table
-    python tools/recipes.py --card-mib 16376 --branch 5.0 --kv q8 --reserve 1.75 --parallel 1   # one custom recipe
+    python tools/recipes.py --card 24                      # config for a 24 GB card used only for the model
+    python tools/recipes.py --card 24 --desktop            # the card also drives your display (keeps 1 GiB free)
+    python tools/recipes.py --card 16 --no-vision          # text only: no vision tower, more context
+    python tools/recipes.py --card-mib 20475 --branch 6.0 --kv fp16 --parallel 2 --image-mp 8
+    python tools/recipes.py --write-configs                # regenerate configs/*.yml and print the table
 
 Model (fitted on data/vram-sweeps, one request, BF16 vision tower loaded, recurrent state FP32):
 
@@ -24,7 +27,10 @@ CACHES = ['fp16', 'q8', 'q6', 'q4']
 # nvidia-smi "total" of typical cards (MiB): 12 GB RTX 3060/4070, 16 GB 4060 Ti/4080/5070 Ti, 24 GB 3090/4090, 32 GB 5090
 CARDS = {12: 12282, 16: 16376, 24: 24564, 32: 32607}
 RECIPES = {12: '4.0', 16: '5.0', 24: '6.0', 32: '8.0'}
-RESERVE = {'display': 1.0, 'slack': 0.3, 'image_4mp': 0.45}
+DISPLAY_GIB = 1.0       # desktop/compositor share when the card drives a display (--desktop)
+SLACK_GIB = 0.3         # PyTorch allocator and library slack
+VISION_TOWER_GIB = 0.932  # BF16 tower, included in base; removed with --no-vision (data/vision-mem.json)
+IMAGE_GIB_PER_MP = 0.111  # vision tower working memory per MP while encoding one image: the 4 MP point of data/vision-mem.json (0.444 GiB), conservative vs the 0.106 slope
 
 
 def peak_gib(row):
@@ -63,12 +69,17 @@ def fit(data):
     return slope, base
 
 
-def pool_tokens(slope, base, branch, kv, card_mib, reserve, parallel=1, step=4096):
-    free = card_mib / 1024 - reserve - base[branch][kv] - CHUNK_GIB - PER_REQUEST_GIB * (parallel - 1)
+def reserve_gib(desktop=False, vision=True, image_mp=4.0):
+    return SLACK_GIB + (DISPLAY_GIB if desktop else 0.0) + (IMAGE_GIB_PER_MP * image_mp if vision else 0.0)
+
+
+def pool_tokens(slope, base, branch, kv, card_mib, reserve, parallel=1, vision=True, step=4096):
+    b = base[branch][kv] - (0.0 if vision else VISION_TOWER_GIB)
+    free = card_mib / 1024 - reserve - b - CHUNK_GIB - PER_REQUEST_GIB * (parallel - 1)
     return int(free / slope[kv] // step * step)
 
 
-def config(branch, kv, cache_size, parallel):
+def config(branch, kv, cache_size, parallel, vision=True):
     seq = min(cache_size, NATIVE_MAX)
     return f"""model:
   model_name: SenseNova-Loop-9B-exl3-{branch}bpw
@@ -80,31 +91,46 @@ def config(branch, kv, cache_size, parallel):
   recurrent_state_fp32: true
   warmup: true               # allocate kernels/workspaces at load, not during the first request
   tool_format: qwen3_coder
-  vision: true
+  vision: {"true" if vision else "false"}
 """
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('--card-mib', type=int); p.add_argument('--branch'); p.add_argument('--kv', default='q8')
-    p.add_argument('--reserve', type=float, default=sum(RESERVE.values())); p.add_argument('--parallel', type=int, default=1)
+    p.add_argument('--card', type=int, choices=sorted(CARDS), help='card class in GB (typical nvidia-smi total)')
+    p.add_argument('--card-mib', type=int, help='exact total from: nvidia-smi --query-gpu=memory.total --format=csv')
+    p.add_argument('--branch', choices=['8.0', '6.0', '5.0', '4.0'], help='model version (default: the recipe for the card class)')
+    p.add_argument('--kv', choices=CACHES, default='q8', help='KV cache type (default q8: no measurable quality cost)')
+    p.add_argument('--desktop', action='store_true', help='the card also drives your display: keep 1 GiB free for it')
+    p.add_argument('--no-vision', action='store_true', help='text only: do not load the vision tower')
+    p.add_argument('--image-mp', type=float, default=4.0, help='largest image you will send, in megapixels (default 4)')
+    p.add_argument('--parallel', type=int, default=1, help='requests served at the same time (default 1)')
+    p.add_argument('--write-configs', action='store_true', help='regenerate configs/*.yml and print the table')
     a = p.parse_args()
     slope, base = fit(load())
-    if a.card_mib:
-        n = pool_tokens(slope, base, a.branch, a.kv, a.card_mib, a.reserve, a.parallel)
-        print(config(a.branch, a.kv, n, a.parallel)); return
-    print('GiB per 1k tokens: ' + ', '.join(f'{c} {slope[c] * 1024:.4f}' for c in CACHES))
-    print('base GiB (Q8 KV): ' + ', '.join(f'{q} {base[q]["q8"]:.2f}' for q in sorted(base, reverse=True)))
+    if not a.write_configs:
+        if not (a.card or a.card_mib): p.error('give --card or --card-mib (or --write-configs)')
+        mib = a.card_mib or CARDS[a.card]
+        branch = a.branch or RECIPES.get(a.card) or max((b for c, b in RECIPES.items() if CARDS[c] <= mib), default='4.0')
+        vision = not a.no_vision
+        n = pool_tokens(slope, base, branch, a.kv, mib, reserve_gib(a.desktop, vision, a.image_mp), a.parallel, vision)
+        if n < 4096: p.error('does not fit: choose a smaller --branch or --kv')
+        print(f'# {mib} MiB card, {branch}bpw, {a.kv.upper()} KV, {"desktop" if a.desktop else "dedicated GPU"}, '
+              f'{"vision up to %g MP" % a.image_mp if vision else "text only"}, {a.parallel} request(s); generated by tools/recipes.py')
+        print(config(branch, a.kv, n, a.parallel, vision), end=''); return
     out = ROOT / 'configs'; out.mkdir(exist_ok=True)
-    print('\n| Card | Branch | parallel | cache_size | max_seq_len | model + pool GiB | card GiB |')
+    for f in out.glob('tabby-*.yml'): f.unlink()
+    print('| Card | Branch | desktop | parallel | cache_size | max_seq_len | GiB used | card GiB |')
     for card, branch in RECIPES.items():
-        for par in (1, 4):
-            n = pool_tokens(slope, base, branch, 'q8', CARDS[card], sum(RESERVE.values()), par)
-            used = base[branch]['q8'] + CHUNK_GIB + PER_REQUEST_GIB * (par - 1) + slope['q8'] * n
-            name = f'tabby-{card}gb' + ('' if par == 1 else f'-{par}x') + '.yml'
-            (out / name).write_text(f'# {card} GB card: {branch}bpw, Q8 KV, {par} request(s) at a time; generated by tools/recipes.py\n'
-                                    + config(branch, 'q8', n, par))
-            print(f'| {card} GB | {branch}bpw | {par} | {n} | {min(n, NATIVE_MAX)} | {used:.2f} | {CARDS[card] / 1024:.2f} |')
+        for desktop in (False, True):
+            for par in (1, 4):
+                n = pool_tokens(slope, base, branch, 'q8', CARDS[card], reserve_gib(desktop), par)
+                used = base[branch]['q8'] + CHUNK_GIB + PER_REQUEST_GIB * (par - 1) + slope['q8'] * n
+                name = f'tabby-{card}gb' + ('-desktop' if desktop else '') + ('' if par == 1 else f'-{par}x') + '.yml'
+                (out / name).write_text(f'# {card} GB card, {"also driving the display" if desktop else "used only for the model"}: '
+                                        f'{branch}bpw, Q8 KV, {par} request(s) at a time; generated by tools/recipes.py\n'
+                                        + config(branch, 'q8', n, par))
+                print(f'| {card} GB | {branch}bpw | {desktop} | {par} | {n} | {min(n, NATIVE_MAX)} | {used:.2f} | {CARDS[card] / 1024:.2f} |')
 
 
 if __name__ == '__main__':
