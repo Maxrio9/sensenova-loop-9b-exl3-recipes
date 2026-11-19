@@ -1,0 +1,6 @@
+target + cache: 9.18 GiB
+draft ('mtp', '/mnt/local-ai-shared/local-ai-experiments/models/loop9b-release/8.0bpw'): +0.228 GiB (weights + cache)
+plain tok/s: code=41.0 prose=40.8 chat=41.0 thinking-math=40.7 json=40.8 edit60=40.7
+warm                   extra 0.23 GiB (+-0.19 sparse/other)  mean 1.62x  code=57.7(1.41x,53%) prose=48.0(1.17x,9%) chat=51.1(1.25x,10%) thinking-math=74.3(1.82x,28%) json=77.5(1.90x,38%) edit60=87.6(2.15x,47%)
+ship                   extra 0.23 GiB (+-0.23 sparse/other)  mean 2.49x  code=114.3(2.78x,54%) prose=65.9(1.61x,21%) chat=67.8(1.65x,23%) thinking-math=109.1(2.68x,52%) json=132.6(3.25x,68%) edit60=120.2(2.95x,59%)
+ALL IDENTICAL

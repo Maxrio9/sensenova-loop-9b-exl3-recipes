@@ -1,0 +1,54 @@
+{
+ "model": "8.0bpw",
+ "card_gib": 32.0,
+ "context": 524288,
+ "kv": "Q8",
+ "headroom_gib": 0.0,
+ "torch_budget_gib": 31.38,
+ "status": "ok",
+ "seconds": 589.1,
+ "usage": {
+  "prompt_tokens": 520827,
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  },
+  "prompt_time": 584.16,
+  "prompt_tokens_per_sec": 891.58,
+  "completion_tokens": 34,
+  "completion_tokens_details": {
+   "accepted_prediction_tokens": 18,
+   "rejected_prediction_tokens": 46
+  },
+  "completion_time": 3.03,
+  "completion_tokens_per_sec": 11.21,
+  "total_tokens": 520861,
+  "total_time": 587.24
+ },
+ "answer": "1. 6:45\n2. Kaldor quarry\n3. The opening\n4. 23\n5. 340 grams",
+ "correct": 4,
+ "per_fact": [
+  true,
+  true,
+  false,
+  true,
+  true
+ ],
+ "refusal": false,
+ "doc_tokens": 515721,
+ "speed": [
+  {
+   "prompt": "Write a Python function that parses an I",
+   "tokens": 400,
+   "tok_s": 61.1
+  },
+  {
+   "prompt": "Explain in three paragraphs why the sky ",
+   "tokens": 397,
+   "tok_s": 67.4
+  }
+ ],
+ "tabby_log_tail": "idia/include/cuda.h:56,\n                 from /mnt/local-ai-shared/local-ai-experiments/loop9b-mtp-usertest/tmp/tmptokn3krk/__triton_launcher.c:2:\n/usr/include/features.h:319:10: note: this is the location of the previous definition\n  319 | # define _POSIX_C_SOURCE        202405L\n      |          ^~~~~~~~~~~~~~~\n00:07:01.441 INFO:     #2 chat/completions: 34 tokens generated at 11.2 T/s \u00b7\n                       prompt 520,827 tokens, none cached, 520,827 new in 584.2\n                       s (892 T/s) \u00b7 first token 584.2 s, total 587.2 s \u00b7 draft\n                       18/64 accepted (28%)\n00:07:01.443 INFO:     #3 chat/completions: 34 prompt tokens \u00b7 temperature: 0,\n                       greedy (req), max_tokens: 400 (req)\n00:07:07.990 INFO:     #3 chat/completions: 400 tokens generated at 80.1 T/s \u00b7\n                       prompt 34 tokens, none cached, 34 new in 1.54 s \u00b7 first\n                       token 1.55 s, total 6.54 s \u00b7 draft 238/651 accepted (37%)\n                       \u00b7 max_tokens reached\n00:07:07.992 INFO:     #4 chat/completions: 23 prompt tokens \u00b7 temperature: 0,\n                       greedy (req), max_tokens: 400 (req)\n00:07:13.884 INFO:     #4 chat/completions: 397 tokens generated at 68.0 T/s \u00b7\n                       prompt 23 tokens, none cached, 23 new in 0.04 s \u00b7 first\n                       token 0.05 s, total 5.89 s \u00b7 draft 198/796 accepted (25%)\n00:07:13.991 WARNING:  Shutdown signal called. Exiting gracefully.\n00:07:14.430 INFO:     Model unloaded.\n",
+ "card_peak_gib": 30.38,
+ "server_peak_gib": 30.34,
+ "pass": false
+}

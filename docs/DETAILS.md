@@ -94,6 +94,7 @@ How it was measured:
 | 12 GB | [`tabby-12gb-desktop.yml`](../configs/tabby-12gb-desktop.yml) without MTP (earlier version): 130,343-token prompt + 4 MP image | 5/5 facts, 10.2 GiB (limit with reserves 10.7) |
 | 16 GB | [`tabby-16gb-desktop.yml`](../configs/tabby-16gb-desktop.yml) without MTP (earlier version): 237,385-token prompt + 4 MP image | 5/5 facts, 14.1 GiB (limit 14.7) |
 | 16 GB, MTP | [`tabby-16gb-desktop.yml`](../configs/tabby-16gb-desktop.yml) as published, with MTP drafting: 204,954-token prompt + 4 MP image | 5/5 facts, 14.0 GiB (limit 14.2, predicted 14.2); right after start 42 tok/s on code, 29 on prose ([data](../data/recipe-checks/16gb-5.0-204k-mtp.json)) |
+| 32 GB, MTP, real card | [`tabby-32gb-desktop.yml`](../configs/tabby-32gb-desktop.yml) as published on an RTX PRO 4500 Blackwell driving a Linux desktop, no memory cap, fresh TabbyAPI 4728158 + fork built from GitHub: 520,827-token prompt + 4 MP image | 4/5 facts (as the earlier 512k run), card peak 30.4 of 31.8 GiB including the desktop; 61-67 tok/s right after start ([data](../data/rtx-pro-4500/recipe-32gb-desktop.json)) |
 | 24 GB | Predicted 22.2 GiB. Closest run: 6.0bpw at 448k in TabbyAPI, small image | 5/5 facts, 21.2 GiB measured vs 21.5 predicted |
 | 32 GB | Predicted 30.0 GiB. Closest run: 8.0bpw at the full 512k in TabbyAPI, small image | 25.6 GiB measured vs 26.0 predicted; 4 of 5 facts |
 
@@ -140,6 +141,10 @@ All rows: 4 draft tokens, hybrid 7. Most of the gain over the plain MTP head com
 The sparse head picks its tokens from counts it keeps while generating; they are saved under `~/.cache/exllamav3/token_stats`.
 Until it has seen a few thousand tokens, drafting runs at about 1.7x.
 
+On an RTX PRO 4500 Blackwell (same settings, ExLlamaV3 defaults, [data](../data/rtx-pro-4500)): 8.0bpw 41 tok/s plain, 2.49x mean over six
+tasks (code 114 tok/s, JSON 133, editing 120, math 109, prose 66, chat 68), output identical; 4.0bpw 63 tok/s plain, 2.02x mean
+(code 139 tok/s), with three near-tie differences from the default INT8 decode path.
+
 Measured alternatives on 6.0bpw (same tasks): n-gram drafting alone 1.3x (only edits and quotes gain), Qwen3.5-0.8B as a separate
 draft model 1.64x for 1.6 GiB, Qwen3.5-2B 1.21x for 3.7 GiB. The MTP head is faster and smaller than both.
 
@@ -161,8 +166,7 @@ KV-cache rows from [data/kv-quality](../data/kv-quality); conversations are up t
 
 ## Not covered yet
 
-- MTP speed on consumer cards: measured on GB10 only. The draft head's share of a round is smaller on cards with faster memory, so
-  the speedup there can differ.
+- MTP speed on 12-24 GB consumer cards: measured on GB10 and an RTX PRO 4500 only.
 - Tests on actual 12/16/24 GB consumer cards, and Windows. The display reserve is an estimate (Windows desktops commonly use 0.5-1.7 GB).
 
 ## Tools

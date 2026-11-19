@@ -93,6 +93,8 @@ python tools/recipes.py --card 16 --no-vision     # text only: no vision tower, 
   configs matched every real run within 0.4 GB.
 - **Speed with MTP** (5.0 bpw on a DGX Spark, greedy, output identical to plain decoding in every test): 22 tok/s plain,
   64 tok/s writing code, 57 on math with thinking, 58 editing a code block, 34 for prose and chat; 2.38x on average over ten tasks.
+- **On a real card:** RTX PRO 4500 (32 GB) with the 8.0 bpw version: 41 tok/s plain, 114 tok/s on code and 2.5x on average with MTP;
+  the published 32 GB desktop config held a 520k-token prompt plus an image at 30.4 of 31.8 GB, desktop included.
 - **Q8 KV cache is free:** quality with Q8 is identical to FP16 in our measurements; Q4 is measurably worse, so it is not used.
 - **Long context:** five facts hidden at 10-90% depth were all found at 128k (FP16 and Q8 cache), 226k and 458k; at the full 512k, 4 of 5.
 
